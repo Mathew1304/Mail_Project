@@ -1,16 +1,7 @@
 import { Star, Reply, ReplyAll, Forward, Trash2, Archive, MoreVertical, Paperclip, X, Flag, FileEdit } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
-
-// Mock services for demo
-const emailService = {
-  updateEmail: async (id: string, data: any) => console.log('Update email:', id, data),
-  getFolders: async (userId: string) => ({ data: [{ id: '1', name: 'Trash' }, { id: '2', name: 'Spam' }] }),
-  deleteEmail: async (id: string) => console.log('Delete email:', id)
-};
-
-const authService = {
-  getCurrentUser: () => ({ id: '1', email: 'user@example.com', name: 'Current User' })
-};
+import { emailService } from '../lib/emailService';
+import { authService } from '../lib/authService';
 
 interface Email {
   id: string;
@@ -44,11 +35,33 @@ type EmailViewProps = {
   }) => void;
 };
 
+interface ConfirmDialogState {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  processing: boolean;
+  error?: string;
+  onConfirm?: () => Promise<void> | void;
+}
+
 export default function EmailView({ email, onClose, onRefresh, onCompose }: EmailViewProps) {
   const [starred, setStarred] = useState(false);
   const [showActions, setShowActions] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const currentUser = authService.getCurrentUser();
+  const initialConfirmState: ConfirmDialogState = {
+    open: false,
+    title: '',
+    message: '',
+    confirmLabel: 'Confirm',
+    cancelLabel: 'Cancel',
+    processing: false,
+    error: undefined,
+    onConfirm: undefined,
+  };
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>(initialConfirmState);
 
   useEffect(() => {
     if (email) {
@@ -118,26 +131,52 @@ export default function EmailView({ email, onClose, onRefresh, onCompose }: Emai
     onCompose({ subject: forwardSubject, body: forwardBody });
   };
 
-  const handleDelete = async () => {
+  const openConfirmDialog = (config: Omit<ConfirmDialogState, 'open' | 'processing'>) => {
+    setConfirmDialog({
+      ...initialConfirmState,
+      open: true,
+      ...config,
+    });
+  };
+
+  const closeConfirmDialog = () => setConfirmDialog(initialConfirmState);
+
+  const executeConfirmAction = async () => {
+    if (!confirmDialog.onConfirm) return;
+    setConfirmDialog(prev => ({ ...prev, processing: true, error: undefined }));
+    try {
+      await confirmDialog.onConfirm();
+      closeConfirmDialog();
+    } catch (error) {
+      console.error('Confirm dialog action failed:', error);
+      setConfirmDialog(prev => ({ ...prev, processing: false, error: 'Something went wrong. Please try again.' }));
+    }
+  };
+
+  const handleDelete = () => {
     if (!email || !currentUser) return;
-    if (confirm('Are you sure you want to delete this email?')) {
-      try {
-        const { data: folders } = await emailService.getFolders(currentUser.id);
+    openConfirmDialog({
+      title: 'Delete email?',
+      message: 'Are you sure you want to delete this email? It will be moved to your Trash folder.',
+      confirmLabel: 'Move to Trash',
+      cancelLabel: 'Cancel',
+      onConfirm: async () => {
+        const { data: folders, error } = await emailService.getFolders(currentUser.id);
+        if (error) throw error;
         const trashFolder = folders?.find(f => f.name.toLowerCase() === 'trash');
+
         if (trashFolder) {
-          await emailService.updateEmail(email.id, { folder_id: trashFolder.id });
-          alert('Email moved to Trash');
+          const { error: updateError } = await emailService.updateEmail(email.id, { folder_id: trashFolder.id });
+          if (updateError) throw updateError;
         } else {
-          await emailService.deleteEmail(email.id);
-          alert('Email deleted permanently');
+          const { error: deleteError } = await emailService.deleteEmail(email.id);
+          if (deleteError) throw deleteError;
         }
+
         onRefresh();
         onClose();
-      } catch (error) {
-        console.error('Error deleting email:', error);
-        alert('Failed to delete email');
       }
-    }
+    });
   };
 
   const handleArchive = async () => {
@@ -149,23 +188,26 @@ export default function EmailView({ email, onClose, onRefresh, onCompose }: Emai
     }
   };
 
-  const handleSpam = async () => {
+  const handleSpam = () => {
     if (!email || !currentUser) return;
-    if (confirm('Mark this email as spam?')) {
-      try {
-        const { data: folders } = await emailService.getFolders(currentUser.id);
+    openConfirmDialog({
+      title: 'Report spam?',
+      message: 'This email will be moved to your Spam folder.',
+      confirmLabel: 'Move to Spam',
+      cancelLabel: 'Cancel',
+      onConfirm: async () => {
+        const { data: folders, error } = await emailService.getFolders(currentUser.id);
+        if (error) throw error;
         const spamFolder = folders?.find(f => f.name.toLowerCase() === 'spam');
-        if (spamFolder) {
-          await emailService.updateEmail(email.id, { folder_id: spamFolder.id });
-          alert('Email moved to Spam');
-          onRefresh();
-          onClose();
-        }
-      } catch (error) {
-        console.error('Error marking as spam:', error);
-        alert('Failed to mark as spam');
+        if (!spamFolder) throw new Error('Spam folder not found');
+
+        const { error: updateError } = await emailService.updateEmail(email.id, { folder_id: spamFolder.id });
+        if (updateError) throw updateError;
+
+        onRefresh();
+        onClose();
       }
-    }
+    });
   };
 
   const handleEditDraft = async () => {
@@ -401,6 +443,42 @@ export default function EmailView({ email, onClose, onRefresh, onCompose }: Emai
           </div>
         </div>
       </div>
+      {confirmDialog.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-800 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{confirmDialog.title}</h3>
+              <button
+                onClick={confirmDialog.processing ? undefined : closeConfirmDialog}
+                className="p-2 text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-white rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-40"
+                disabled={confirmDialog.processing}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-slate-400">{confirmDialog.message}</p>
+            {confirmDialog.error && (
+              <p className="text-sm text-red-500 mt-3">{confirmDialog.error}</p>
+            )}
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={confirmDialog.processing ? undefined : closeConfirmDialog}
+                className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white"
+                disabled={confirmDialog.processing}
+              >
+                {confirmDialog.cancelLabel}
+              </button>
+              <button
+                onClick={executeConfirmAction}
+                className="px-5 py-2 text-sm font-semibold rounded-lg text-white bg-red-500 hover:bg-red-600 disabled:opacity-60"
+                disabled={confirmDialog.processing}
+              >
+                {confirmDialog.processing ? 'Working...' : confirmDialog.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

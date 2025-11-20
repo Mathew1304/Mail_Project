@@ -29,9 +29,11 @@ export default function ComposeEmail({ onClose, onSent, onDraftSaved, prefilledD
   const [profile, setProfile] = useState<any>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showScheduleMenu, setShowScheduleMenu] = useState(false);
+  const [linkDialog, setLinkDialog] = useState<{ open: boolean; url: string; error?: string }>({ open: false, url: '' });
   
   const textareaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const savedSelectionRef = useRef<Range | null>(null);
 
   const emojis = ['😊', '😂', '😍', '👍', '🙏', '🎉', '😎', '😢'];
 
@@ -144,16 +146,56 @@ export default function ComposeEmail({ onClose, onSent, onDraftSaved, prefilledD
     document.execCommand('italic', false);
   };
 
+  const normalizeUrl = (value: string) => (value.match(/^https?:\/\//i) ? value : `https://${value}`);
+
   const handleInsertLink = () => {
     const editor = textareaRef.current;
     if (!editor) return;
 
-    const url = window.prompt('Enter link URL');
-    if (!url) return;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      editor.focus();
+      return;
+    }
 
+    savedSelectionRef.current = selection.getRangeAt(0);
+    setLinkDialog({ open: true, url: '', error: undefined });
+  };
+
+  const closeLinkDialog = () => {
+    savedSelectionRef.current = null;
+    setLinkDialog({ open: false, url: '', error: undefined });
+  };
+
+  const handleLinkConfirm = () => {
+    const editor = textareaRef.current;
+    if (!editor) return;
+
+    const trimmedUrl = linkDialog.url.trim();
+    if (!trimmedUrl) {
+      setLinkDialog(prev => ({ ...prev, error: 'Please enter a valid URL.' }));
+      return;
+    }
+
+    const finalUrl = normalizeUrl(trimmedUrl);
     editor.focus();
-    document.execCommand('createLink', false, url);
+
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    if (savedSelectionRef.current) {
+      selection?.addRange(savedSelectionRef.current);
+    }
+
+    const hasSelection = savedSelectionRef.current && !savedSelectionRef.current.collapsed;
+
+    if (hasSelection) {
+      document.execCommand('createLink', false, finalUrl);
+    } else {
+      document.execCommand('insertHTML', false, `<a href="${finalUrl}" target="_blank" rel="noopener noreferrer">${finalUrl}</a>`);
+    }
+
     setBody(editor.innerHTML);
+    closeLinkDialog();
   };
 
   const handleInsertEmoji = () => {
@@ -490,6 +532,45 @@ export default function ComposeEmail({ onClose, onSent, onDraftSaved, prefilledD
           </button>
         </div>
       </div>
+
+      {linkDialog.open && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Insert link</h3>
+              <button
+                onClick={closeLinkDialog}
+                className="p-2 text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-white rounded-full hover:bg-gray-100 dark:hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">Paste the URL you want to link to.</p>
+            <input
+              type="text"
+              value={linkDialog.url}
+              onChange={(e) => setLinkDialog(prev => ({ ...prev, url: e.target.value, error: undefined }))}
+              placeholder="https://example.com"
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {linkDialog.error && <p className="text-sm text-red-500 mt-2">{linkDialog.error}</p>}
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={closeLinkDialog}
+                className="px-4 py-2 text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleLinkConfirm}
+                className="px-5 py-2 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition"
+              >
+                Insert link
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
