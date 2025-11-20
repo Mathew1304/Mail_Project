@@ -1,0 +1,495 @@
+import { useState, useEffect, useRef } from 'react';
+import { X, Send, Paperclip, Link, Smile, Clock } from 'lucide-react';
+import { emailService } from '../lib/emailService';
+import { authService } from '../lib/authService';
+
+interface ComposeEmailProps {
+  onClose: () => void;
+  onSent: () => void;
+  onDraftSaved: () => void;
+  prefilledData?: {
+    to?: string;
+    cc?: string;
+    subject?: string;
+    body?: string;
+  };
+}
+
+export default function ComposeEmail({ onClose, onSent, onDraftSaved, prefilledData }: ComposeEmailProps) {
+  const [to, setTo] = useState('');
+  const [cc, setCc] = useState('');
+  const [bcc, setBcc] = useState('');
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [showCc, setShowCc] = useState(false);
+  const [showBcc, setShowBcc] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [draftStatus, setDraftStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [profile, setProfile] = useState<any>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showScheduleMenu, setShowScheduleMenu] = useState(false);
+  
+  const textareaRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const emojis = ['😊', '😂', '😍', '👍', '🙏', '🎉', '😎', '😢'];
+
+  useEffect(() => {
+    const currentUser = authService.getCurrentUser();
+    setProfile(currentUser);
+  }, []);
+
+  // Initialize with pre-filled data
+  useEffect(() => {
+    if (prefilledData) {
+      setTo(prefilledData.to || '');
+      setCc(prefilledData.cc || '');
+      setSubject(prefilledData.subject || '');
+      setBody(prefilledData.body || '');
+      
+      // Show CC field if there's CC data
+      if (prefilledData.cc) {
+        setShowCc(true);
+      }
+
+      // Initialize editor content without making it a controlled component
+      if (textareaRef.current) {
+        textareaRef.current.innerHTML = prefilledData.body || '';
+      }
+    }
+  }, [prefilledData]);
+
+  // Auto-save draft every 3 seconds
+  useEffect(() => {
+    if (!to && !subject && !body) return;
+
+    const timer = setTimeout(() => {
+      saveDraft();
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [to, cc, bcc, subject, body]);
+
+  const saveDraft = async () => {
+    if (!profile || (!to.trim() && !subject.trim() && !body.trim())) return;
+
+    setDraftStatus('saving');
+    try {
+      const toEmails = to.split(',').map((email) => ({
+        email: email.trim(),
+        name: email.trim()
+      })).filter(item => item.email);
+
+      const ccEmails = cc.split(',').map((email) => ({
+        email: email.trim(),
+        name: email.trim()
+      })).filter(item => item.email);
+
+      const bccEmails = bcc.split(',').map((email) => ({
+        email: email.trim(),
+        name: email.trim()
+      })).filter(item => item.email);
+
+      await emailService.createEmail({
+        from_email: profile.email,
+        from_name: profile.full_name || profile.email,
+        to_emails: toEmails,
+        cc_emails: ccEmails,
+        bcc_emails: bccEmails,
+        subject: subject || '(no subject)',
+        body: body,
+        is_draft: true,
+        folder_id: 'drafts'
+      });
+
+      setDraftStatus('saved');
+      onDraftSaved();
+      
+      setTimeout(() => setDraftStatus('idle'), 2000);
+    } catch (error) {
+      console.error('Error saving draft:', error);
+      setDraftStatus('idle');
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === 'b') {
+        e.preventDefault();
+        handleBold();
+      } else if (e.key === 'i') {
+        e.preventDefault();
+        handleItalic();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSend();
+      }
+    }
+  };
+
+  const handleBold = () => {
+    const editor = textareaRef.current;
+    if (!editor) return;
+
+    editor.focus();
+    document.execCommand('bold', false);
+  };
+
+  const handleItalic = () => {
+    const editor = textareaRef.current;
+    if (!editor) return;
+
+    editor.focus();
+    document.execCommand('italic', false);
+  };
+
+  const handleInsertLink = () => {
+    const editor = textareaRef.current;
+    if (!editor) return;
+
+    const url = window.prompt('Enter link URL');
+    if (!url) return;
+
+    editor.focus();
+    document.execCommand('createLink', false, url);
+    setBody(editor.innerHTML);
+  };
+
+  const handleInsertEmoji = () => {
+    setShowScheduleMenu(false);
+    setShowEmojiPicker((prev) => !prev);
+  };
+
+  const insertEmoji = (emoji: string) => {
+    const editor = textareaRef.current;
+    if (!editor) return;
+
+    editor.focus();
+    document.execCommand('insertText', false, emoji);
+    setBody(editor.innerHTML);
+    setShowEmojiPicker(false);
+  };
+
+  const handleScheduleSend = () => {
+    setShowEmojiPicker(false);
+    setShowScheduleMenu((prev) => !prev);
+  };
+
+  const scheduleSendAfter = (minutes: number) => {
+    if (!profile || !to.trim()) return;
+
+    const delay = minutes * 60 * 1000;
+    alert(`Your email will be sent in ${minutes} minute(s).`);
+    setShowScheduleMenu(false);
+    setTimeout(() => {
+      handleSend();
+    }, delay);
+  };
+
+  const handleSend = async () => {
+    if (!profile || !to.trim()) return;
+
+    setSending(true);
+    try {
+      const toEmails = to.split(',').map((email) => ({
+        email: email.trim(),
+        name: email.trim()
+      })).filter(item => item.email);
+
+      const ccEmails = cc.split(',').map((email) => ({
+        email: email.trim(),
+        name: email.trim()
+      })).filter(item => item.email);
+
+      const bccEmails = bcc.split(',').map((email) => ({
+        email: email.trim(),
+        name: email.trim()
+      })).filter(item => item.email);
+
+      await emailService.createEmail({
+        from_email: profile.email,
+        from_name: profile.full_name || profile.email,
+        to_emails: toEmails,
+        cc_emails: ccEmails,
+        bcc_emails: bccEmails,
+        subject: subject || '(no subject)',
+        body: body,
+        is_draft: false,
+        folder_id: 'sent'
+      });
+
+      onSent();
+    } catch (error) {
+      console.error('Error sending email:', error);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleAttachment = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    setAttachments(prev => [...prev, ...files]);
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const formatFileSize = (size: number) => {
+    if (size < 1024) return `${size} B`;
+    const kb = size / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    const mb = kb / 1024;
+    if (mb < 1024) return `${mb.toFixed(1)} MB`;
+    const gb = mb / 1024;
+    return `${gb.toFixed(1)} GB`;
+  };
+
+  return (
+    <div className="fixed bottom-4 right-4 z-50 w-[500px] max-h-[600px] bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-slate-700">
+        <h2 className="text-lg font-medium text-gray-900 dark:text-white">New Message</h2>
+        <div className="flex items-center gap-2">
+          {draftStatus === 'saving' && (
+            <span className="text-sm text-gray-500 dark:text-slate-400">Saving...</span>
+          )}
+          {draftStatus === 'saved' && (
+            <span className="text-sm text-green-600 dark:text-green-400">Draft saved</span>
+          )}
+          <button
+            onClick={onClose}
+            className="p-2 text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg transition"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Form */}
+      <div className="flex-1 overflow-y-auto">
+        {/* To Field */}
+        <div className="flex items-center border-b border-gray-200 dark:border-slate-700 px-4 py-3">
+          <label className="text-sm text-gray-600 dark:text-slate-400 w-12 flex-shrink-0">To:</label>
+          <input
+            type="email"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            placeholder=""
+            className="flex-1 bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none text-sm"
+          />
+          <div className="flex items-center gap-2 ml-2">
+            <button 
+              onClick={() => setShowCc(!showCc)}
+              className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Cc
+            </button>
+            <button 
+              onClick={() => setShowBcc(!showBcc)}
+              className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Bcc
+            </button>
+          </div>
+        </div>
+
+        {/* CC Field */}
+        {showCc && (
+          <div className="flex items-center border-b border-gray-200 dark:border-slate-700 px-4 py-3">
+            <label className="text-sm text-gray-600 dark:text-slate-400 w-12 flex-shrink-0">Cc:</label>
+            <input
+              type="email"
+              value={cc}
+              onChange={(e) => setCc(e.target.value)}
+              placeholder=""
+              className="flex-1 bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none text-sm"
+            />
+          </div>
+        )}
+
+        {/* BCC Field */}
+        {showBcc && (
+          <div className="flex items-center border-b border-gray-200 dark:border-slate-700 px-4 py-3">
+            <label className="text-sm text-gray-600 dark:text-slate-400 w-12 flex-shrink-0">Bcc:</label>
+            <input
+              type="email"
+              value={bcc}
+              onChange={(e) => setBcc(e.target.value)}
+              placeholder=""
+              className="flex-1 bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none text-sm"
+            />
+          </div>
+        )}
+
+        {/* Subject Field */}
+        <div className="flex items-center border-b border-gray-200 dark:border-slate-700 px-4 py-3">
+          <label className="text-sm text-gray-600 dark:text-slate-400 w-12 flex-shrink-0">Subject:</label>
+          <input
+            type="text"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder=""
+            className="flex-1 bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none text-sm"
+          />
+        </div>
+
+        {/* Body Field */}
+        <div className="flex-1 p-4">
+          <div
+            ref={textareaRef}
+            contentEditable
+            onInput={(e) => setBody(e.currentTarget.innerHTML || '')}
+            onKeyDown={handleKeyDown}
+            className="w-full h-64 bg-transparent text-gray-900 dark:text-white focus:outline-none text-sm leading-relaxed"
+            style={{ 
+              fontSize: '14px',
+              lineHeight: '1.6',
+              minHeight: '256px'
+            }}
+          />
+        </div>
+
+        {/* Attachments */}
+        {attachments.length > 0 && (
+          <div className="border-t border-gray-200 dark:border-slate-700 p-4">
+            <h4 className="text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Attachments</h4>
+            <div className="space-y-2">
+              {attachments.map((file, index) => (
+                <div key={index} className="flex items-center justify-between bg-gray-100 dark:bg-slate-800 rounded-lg p-3">
+                  <div className="flex items-center gap-3">
+                    <Paperclip className="w-4 h-4 text-gray-500 dark:text-slate-400" />
+                    <span className="text-sm text-gray-900 dark:text-white">
+                      {file.name}
+                      <span className="text-xs text-gray-500 dark:text-slate-400 ml-2">
+                        {formatFileSize(file.size)}
+                      </span>
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => removeAttachment(index)}
+                    className="p-1 text-gray-500 dark:text-slate-400 hover:text-red-500 dark:hover:text-red-400 rounded transition"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between p-4 border-t border-gray-200 dark:border-slate-700">
+        <div className="relative flex items-center gap-2">
+          <button
+            onClick={handleAttachment}
+            className="p-2 text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg transition"
+            title="Attach file"
+          >
+            <Paperclip className="w-4 h-4" />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+          <button
+            onClick={handleInsertLink}
+            className="p-2 text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg transition"
+            title="Insert link"
+          >
+            <Link className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleInsertEmoji}
+            className="p-2 text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg transition"
+            title="Insert emoji"
+          >
+            <Smile className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleScheduleSend}
+            className="p-2 text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg transition"
+            title="Schedule send"
+          >
+            <Clock className="w-4 h-4" />
+          </button>
+
+          {showEmojiPicker && (
+            <div className="absolute bottom-12 left-12 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg shadow-lg p-2 flex flex-wrap gap-1 max-w-[200px] z-50">
+              {emojis.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  className="text-lg hover:bg-gray-100 dark:hover:bg-slate-700 rounded px-1"
+                  onClick={() => insertEmoji(emoji)}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {showScheduleMenu && (
+            <div className="absolute bottom-12 left-32 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg shadow-lg py-2 w-40 z-50 text-sm">
+              <button
+                type="button"
+                className="block w-full text-left px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-slate-700"
+                onClick={() => scheduleSendAfter(5)}
+              >
+                In 5 minutes
+              </button>
+              <button
+                type="button"
+                className="block w-full text-left px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-slate-700"
+                onClick={() => scheduleSendAfter(30)}
+              >
+                In 30 minutes
+              </button>
+              <button
+                type="button"
+                className="block w-full text-left px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-slate-700"
+                onClick={() => scheduleSendAfter(120)}
+              >
+                In 2 hours
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-gray-600 dark:text-slate-400 hover:text-gray-800 dark:hover:text-white transition"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSend}
+            disabled={sending || !to.trim()}
+            className="px-6 py-2 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
+          >
+            {sending ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Sending...
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                Send
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
