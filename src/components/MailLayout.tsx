@@ -20,6 +20,10 @@ const iconMap: Record<string, typeof Inbox> = {
   star: Star,
   circle: Circle,
   folder: Circle,
+  drafts: FileEdit,
+  sent: Send,
+  spam: Archive,
+  trash: Trash2,
 };
 
 // Define types
@@ -323,7 +327,7 @@ export default function MailLayout() {
               const folder = folders.find(f => f.name.toLowerCase() === folderType);
               if (!folder) return null;
               
-              const Icon = iconMap[folder.icon || 'folder'] || Circle;
+              const Icon = iconMap[folderType] || iconMap[folder.icon || 'folder'] || Circle;
               const isActive = selectedFolder?.id === folder.id;
               const folderUnread = emails.filter(e =>
                 e.folder_id === folder.id && !e.is_read
@@ -339,10 +343,10 @@ export default function MailLayout() {
                       : 'text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800/50'
                   }`}
                 >
-                  <Icon className="w-5 h-5" style={{ color: folder.color }} />
-                  <span className="flex-1 text-left font-medium">{folder.name}</span>
+                  <Icon className="w-5 h-5 flex-shrink-0" style={{ color: folder.color || (isActive ? '#1e40af' : undefined) }} />
+                  <span className="flex-1 text-left font-medium text-sm">{folder.name}</span>
                   {folderUnread > 0 && (
-                    <span className="bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center">
+                    <span className="bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center flex-shrink-0">
                       {folderUnread}
                     </span>
                   )}

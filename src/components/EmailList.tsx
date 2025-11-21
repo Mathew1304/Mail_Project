@@ -55,6 +55,12 @@ export default function EmailList({
     }
   };
 
+  const stripHtmlTags = (html: string): string => {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    return div.textContent || div.innerText || '';
+  };
+
   const truncateText = (text: string, maxLength: number) => {
     if (text.length <= maxLength) return text;
     return text.slice(0, maxLength) + '...';
@@ -125,7 +131,7 @@ export default function EmailList({
                       </div>
 
                       <p className="text-xs text-gray-500 dark:text-slate-500 line-clamp-2">
-                        {truncateText(email.body || '', 100)}
+                        {truncateText(stripHtmlTags(email.body || ''), 100)}
                       </p>
 
                       <div className="flex items-center gap-2 mt-2">

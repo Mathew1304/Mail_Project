@@ -93,16 +93,26 @@ export default function ComposeEmail({ onClose, onSent, onDraftSaved, prefilledD
         name: email.trim()
       })).filter(item => item.email);
 
+      const draftsFolderId = `${profile.id}-drafts`;
+
+      // Get plain text version for preview
+      const plainTextBody = (() => {
+        const div = document.createElement('div');
+        div.innerHTML = body;
+        return div.textContent || div.innerText || '';
+      })();
+
       await emailService.createEmail({
+        user_id: profile.id,
         from_email: profile.email,
         from_name: profile.full_name || profile.email,
         to_emails: toEmails,
         cc_emails: ccEmails,
         bcc_emails: bccEmails,
         subject: subject || '(no subject)',
-        body: body,
+        body: plainTextBody,
         is_draft: true,
-        folder_id: 'drafts'
+        folder_id: draftsFolderId
       });
 
       setDraftStatus('saved');
@@ -249,16 +259,26 @@ export default function ComposeEmail({ onClose, onSent, onDraftSaved, prefilledD
         name: email.trim()
       })).filter(item => item.email);
 
+      const sentFolderId = `${profile.id}-sent`;
+
+      // Get plain text version for preview
+      const plainTextBody = (() => {
+        const div = document.createElement('div');
+        div.innerHTML = body;
+        return div.textContent || div.innerText || '';
+      })();
+
       await emailService.createEmail({
+        user_id: profile.id,
         from_email: profile.email,
         from_name: profile.full_name || profile.email,
         to_emails: toEmails,
         cc_emails: ccEmails,
         bcc_emails: bccEmails,
         subject: subject || '(no subject)',
-        body: body,
+        body: plainTextBody,
         is_draft: false,
-        folder_id: 'sent'
+        folder_id: sentFolderId
       });
 
       onSent();
