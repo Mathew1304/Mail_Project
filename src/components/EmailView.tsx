@@ -2,11 +2,13 @@ import { Star, Reply, ReplyAll, Forward, Trash2, Archive, MoreVertical, Papercli
 import { useState, useEffect, useRef } from 'react';
 import { emailService } from '../lib/emailService';
 import { authService } from '../lib/authService';
+import { threadingService } from '../lib/threadingService';
 
 interface Email {
   id: string;
   user_id: string;
   folder_id?: string;
+  thread_id?: string;
   from_email: string;
   from_name?: string;
   to_emails: any[];
@@ -110,25 +112,56 @@ export default function EmailView({ email, onClose, onRefresh, onCompose }: Emai
 
   const handleReply = () => {
     if (!email || !currentUser || !onCompose) return;
+    
+    // Generate thread ID for this conversation
+    const participants = threadingService.getParticipants(email);
+    const threadId = email.thread_id || threadingService.generateThreadId(email.subject || '', participants);
+    
     const replySubject = email.subject?.startsWith('Re:') ? email.subject : `Re: ${email.subject || '(No subject)'}`;
     const replyBody = `\n\n--- Original Message ---\nFrom: ${email.from_name || email.from_email}\nTo: ${email.to_emails?.map(to => to.email).join(', ') || 'me'}\nSubject: ${email.subject || '(No subject)'}\n\n${email.body || ''}`;
-    onCompose({ to: email.from_email, subject: replySubject, body: replyBody });
+    
+    onCompose({ 
+      to: email.from_email, 
+      subject: replySubject, 
+      body: replyBody,
+      threadId: threadId,
+      isReply: true
+    });
   };
 
   const handleReplyAll = () => {
     if (!email || !currentUser || !onCompose) return;
+    
+    // Generate thread ID for this conversation
+    const participants = threadingService.getParticipants(email);
+    const threadId = email.thread_id || threadingService.generateThreadId(email.subject || '', participants);
+    
     const allRecipients = [email.from_email, ...(email.to_emails?.map(to => to.email) || []), ...(email.cc_emails?.map(cc => cc.email) || [])]
       .filter(emailAddr => emailAddr !== currentUser.email);
     const replySubject = email.subject?.startsWith('Re:') ? email.subject : `Re: ${email.subject || '(No subject)'}`;
     const replyBody = `\n\n--- Original Message ---\nFrom: ${email.from_name || email.from_email}\nTo: ${email.to_emails?.map(to => to.email).join(', ') || 'me'}\nSubject: ${email.subject || '(No subject)'}\n\n${email.body || ''}`;
-    onCompose({ to: allRecipients.join(', '), subject: replySubject, body: replyBody });
+    
+    onCompose({ 
+      to: allRecipients.join(', '), 
+      subject: replySubject, 
+      body: replyBody,
+      threadId: threadId,
+      isReply: true
+    });
   };
 
   const handleForward = () => {
     if (!email || !onCompose) return;
+    
+    // Create new thread for forward
     const forwardSubject = email.subject?.startsWith('Fwd:') ? email.subject : `Fwd: ${email.subject || '(No subject)'}`;
     const forwardBody = `\n\n--- Forwarded Message ---\nFrom: ${email.from_name || email.from_email}\nTo: ${email.to_emails?.map(to => to.email).join(', ') || 'me'}\nSubject: ${email.subject || '(No subject)'}\nDate: ${formatFullDate(email.sent_at || email.created_at)}\n\n${email.body || ''}`;
-    onCompose({ subject: forwardSubject, body: forwardBody });
+    
+    onCompose({ 
+      subject: forwardSubject, 
+      body: forwardBody,
+      isForward: true
+    });
   };
 
   const openConfirmDialog = (config: Omit<ConfirmDialogState, 'open' | 'processing'>) => {

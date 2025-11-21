@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS emails (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   folder_id TEXT,
+  thread_id TEXT,
   from_email TEXT,
   from_name TEXT,
   to_emails TEXT,

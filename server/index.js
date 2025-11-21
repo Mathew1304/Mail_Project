@@ -3,12 +3,19 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const crypto = require('crypto');
+const http = require('http');
 
 const { run, all, get } = require('./db');
+const p2pServer = require('./p2p');
 
 const app = express();
+const server = http.createServer(app);
+
 app.use(cors());
 app.use(bodyParser.json());
+
+// Initialize P2P server
+p2pServer.initialize(server);
 
 // Helper to coerce booleans
 const toBoolInt = v => (v ? 1 : 0);
@@ -209,6 +216,7 @@ app.delete('/api/email/:id', (req, res) => {
 
 // Start server
 const PORT = +process.env.PORT || 4000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Email backend listening on http://localhost:${PORT}`);
+  console.log(`P2P WebSocket available at ws://localhost:${PORT}/api/p2p`);
 });

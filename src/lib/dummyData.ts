@@ -17,6 +17,13 @@ const DUMMY_DRAFT_SUBJECTS = [
 ];
 
 export const addDummyDataForUser = async (userId: string, userEmail: string, userName?: string) => {
+  // Dummy data disabled - only real user emails are shown
+  console.log('Dummy data creation disabled for user:', userId);
+  return;
+};
+
+// Legacy function - kept for reference but not used
+const _addDummyDataForUserLegacy = async (userId: string, userEmail: string, userName?: string) => {
   try {
     // Get user's folders
     const folders = await dbOperations.getFolders(userId);
