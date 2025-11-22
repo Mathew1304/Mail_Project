@@ -259,27 +259,69 @@ export default function EmailView({ email, onClose, onRefresh, onCompose }: Emai
 
   const formatFullDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
+    return date.toLocaleDateString('en-IN', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
+      timeZone: 'Asia/Kolkata',
     });
   };
 
   const formatShortDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
-    const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
     
-    if (diffInHours < 24) {
-      return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    } else if (diffInHours < 168) {
-      return date.toLocaleDateString('en-US', { weekday: 'short' });
+    // Get dates in IST timezone
+    const istFormatter = new Intl.DateTimeFormat('en-IN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      timeZone: 'Asia/Kolkata',
+    });
+    
+    const todayParts = istFormatter.formatToParts(now);
+    const dateParts = istFormatter.formatToParts(date);
+    
+    const todayStr = `${todayParts.find(p => p.type === 'year')?.value}-${todayParts.find(p => p.type === 'month')?.value}-${todayParts.find(p => p.type === 'day')?.value}`;
+    const dateStr = `${dateParts.find(p => p.type === 'year')?.value}-${dateParts.find(p => p.type === 'month')?.value}-${dateParts.find(p => p.type === 'day')?.value}`;
+    
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayFormatter = new Intl.DateTimeFormat('en-IN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      timeZone: 'Asia/Kolkata',
+    });
+    const yesterdayParts = yesterdayFormatter.formatToParts(yesterday);
+    const yesterdayStr = `${yesterdayParts.find(p => p.type === 'year')?.value}-${yesterdayParts.find(p => p.type === 'month')?.value}-${yesterdayParts.find(p => p.type === 'day')?.value}`;
+
+    if (dateStr === todayStr) {
+      // Today: show time in 12-hour format with AM/PM
+      return date.toLocaleTimeString('en-IN', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Kolkata',
+      });
+    } else if (dateStr === yesterdayStr) {
+      return 'Yesterday';
+    } else if (dateParts.find(p => p.type === 'year')?.value === todayParts.find(p => p.type === 'year')?.value) {
+      return date.toLocaleDateString('en-IN', { 
+        month: 'short', 
+        day: 'numeric',
+        timeZone: 'Asia/Kolkata',
+      });
     } else {
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return date.toLocaleDateString('en-IN', { 
+        month: 'short', 
+        day: 'numeric',
+        year: '2-digit',
+        timeZone: 'Asia/Kolkata',
+      });
     }
   };
 

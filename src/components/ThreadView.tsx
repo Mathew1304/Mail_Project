@@ -1,4 +1,4 @@
-import { X, Reply, ReplyAll, ChevronDown, ChevronUp, Forward } from 'lucide-react';
+import { X, Reply, ReplyAll, Forward, ChevronRight } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { emailService } from '../lib/emailService';
 import { threadingService } from '../lib/threadingService';
@@ -39,8 +39,8 @@ interface ThreadViewProps {
 export default function ThreadView({ threadId, userId, onClose, onCompose }: ThreadViewProps) {
   const [emails, setEmails] = useState<ThreadEmail[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentEmailIndex, setCurrentEmailIndex] = useState(0);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [expandedEmails, setExpandedEmails] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const user = authService.getCurrentUser();
@@ -53,15 +53,18 @@ export default function ThreadView({ threadId, userId, onClose, onCompose }: Thr
     try {
       const { data: allEmails } = await emailService.getEmails(userId);
       if (allEmails) {
-        // Filter emails in this thread and sort by date descending (newest first)
+        // Filter emails in this thread and sort by date ascending (oldest first)
         const threadEmails = allEmails
           .filter((email: any) => email.thread_id === threadId)
           .sort((a: any, b: any) => 
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
           );
         
         setEmails(threadEmails);
-        setCurrentEmailIndex(0); // Show newest email first
+        // Expand only the last email by default
+        if (threadEmails.length > 0) {
+          setExpandedEmails(new Set([threadEmails[threadEmails.length - 1].id]));
+        }
       }
     } catch (error) {
       console.error('Error loading thread:', error);
@@ -70,16 +73,14 @@ export default function ThreadView({ threadId, userId, onClose, onCompose }: Thr
     }
   };
 
-  const currentEmail = emails[currentEmailIndex];
-  const hasNextEmail = currentEmailIndex < emails.length - 1;
-  const hasPrevEmail = currentEmailIndex > 0;
-
-  const goToNextEmail = () => {
-    if (hasNextEmail) setCurrentEmailIndex(currentEmailIndex + 1);
-  };
-
-  const goToPrevEmail = () => {
-    if (hasPrevEmail) setCurrentEmailIndex(currentEmailIndex - 1);
+  const toggleEmailExpanded = (emailId: string) => {
+    const newExpanded = new Set(expandedEmails);
+    if (newExpanded.has(emailId)) {
+      newExpanded.delete(emailId);
+    } else {
+      newExpanded.add(emailId);
+    }
+    setExpandedEmails(newExpanded);
   };
 
   const handleReply = (email: ThreadEmail) => {
@@ -116,38 +117,64 @@ export default function ThreadView({ threadId, userId, onClose, onCompose }: Thr
   };
 
   const formatDate = (dateString: string) => {
-    // Parse the date string properly
-    let date;
-    if (dateString.includes('T')) {
-      // ISO format
-      date = new Date(dateString);
-    } else {
-      // SQLite format (YYYY-MM-DD HH:MM:SS)
-      date = new Date(dateString.replace(' ', 'T'));
-    }
+    const date = new Date(dateString);
     
-    const today = new Date();
-    const yesterday = new Date(today);
+    // Get today's date in IST
+    const istFormatter = new Intl.DateTimeFormat('en-IN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      timeZone: 'Asia/Kolkata',
+    });
+    
+    const nowFormatter = new Intl.DateTimeFormat('en-IN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      timeZone: 'Asia/Kolkata',
+    });
+    
+    const now = new Date();
+    const todayParts = nowFormatter.formatToParts(now);
+    const dateParts = istFormatter.formatToParts(date);
+    
+    const todayStr = `${todayParts.find(p => p.type === 'year')?.value}-${todayParts.find(p => p.type === 'month')?.value}-${todayParts.find(p => p.type === 'day')?.value}`;
+    const dateStr = `${dateParts.find(p => p.type === 'year')?.value}-${dateParts.find(p => p.type === 'month')?.value}-${dateParts.find(p => p.type === 'day')?.value}`;
+    
+    const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayFormatter = new Intl.DateTimeFormat('en-IN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      timeZone: 'Asia/Kolkata',
+    });
+    const yesterdayParts = yesterdayFormatter.formatToParts(yesterday);
+    const yesterdayStr = `${yesterdayParts.find(p => p.type === 'year')?.value}-${yesterdayParts.find(p => p.type === 'month')?.value}-${yesterdayParts.find(p => p.type === 'day')?.value}`;
 
-    // Compare dates (ignoring time)
-    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const yesterdayOnly = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
-
-    if (dateOnly.getTime() === todayOnly.getTime()) {
+    if (dateStr === todayStr) {
       // Today: show time in 12-hour format with AM/PM
-      const hours = date.getHours();
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      const ampm = hours >= 12 ? 'PM' : 'AM';
-      const displayHours = hours % 12 || 12;
-      return `${displayHours}:${minutes} ${ampm}`;
-    } else if (dateOnly.getTime() === yesterdayOnly.getTime()) {
+      return date.toLocaleTimeString('en-IN', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Kolkata',
+      });
+    } else if (dateStr === yesterdayStr) {
       return 'Yesterday';
-    } else if (date.getFullYear() === today.getFullYear()) {
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } else if (dateParts.find(p => p.type === 'year')?.value === todayParts.find(p => p.type === 'year')?.value) {
+      return date.toLocaleDateString('en-IN', { 
+        month: 'short', 
+        day: 'numeric',
+        timeZone: 'Asia/Kolkata',
+      });
     } else {
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+      return date.toLocaleDateString('en-IN', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: '2-digit',
+        timeZone: 'Asia/Kolkata',
+      });
     }
   };
 
@@ -160,7 +187,7 @@ export default function ThreadView({ threadId, userId, onClose, onCompose }: Thr
     );
   }
 
-  if (emails.length === 0 || !currentEmail) {
+  if (emails.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-gray-500">No emails in this thread</div>
@@ -168,105 +195,137 @@ export default function ThreadView({ threadId, userId, onClose, onCompose }: Thr
     );
   }
 
+  const firstEmail = emails[0];
+
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900">
-      {/* Header with Navigation */}
+      {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
         <div className="flex-1">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-            {threadingService.getBaseSubject(currentEmail?.subject || '')}
+            {threadingService.getBaseSubject(firstEmail?.subject || '')}
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Message {currentEmailIndex + 1} of {emails.length}
+            {emails.length} message{emails.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={goToPrevEmail}
-            disabled={!hasPrevEmail}
-            className={`p-2 rounded-lg transition-colors ${
-              hasPrevEmail
-                ? 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
-                : 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
-            }`}
-          >
-            <ChevronUp size={20} />
-          </button>
-          <button
-            onClick={goToNextEmail}
-            disabled={!hasNextEmail}
-            className={`p-2 rounded-lg transition-colors ${
-              hasNextEmail
-                ? 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
-                : 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
-            }`}
-          >
-            <ChevronDown size={20} />
-          </button>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-          >
-            <X size={20} className="text-gray-600 dark:text-gray-400" />
-          </button>
-        </div>
+        <button
+          onClick={onClose}
+          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+        >
+          <X size={20} className="text-gray-600 dark:text-gray-400" />
+        </button>
       </div>
 
-      {/* Email Content */}
-      <div className="flex-1 overflow-y-auto p-6">
-        {/* Sender Info */}
-        <div className="flex items-start gap-4 mb-6">
-          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-lg font-semibold flex-shrink-0">
-            {(currentEmail.from_name || currentEmail.from_email).charAt(0).toUpperCase()}
-          </div>
-          <div className="flex-1">
-            <p className="font-semibold text-gray-900 dark:text-white">
-              {currentEmail.from_name || currentEmail.from_email}
-            </p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              &lt;{currentEmail.from_email}&gt;
-            </p>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              to {currentEmail.to_emails?.map((t: any) => t.email).join(', ') || 'me'}
-            </p>
-          </div>
-          <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
-            {formatDate(currentEmail.created_at || currentEmail.sent_at || '')}
-          </span>
-        </div>
+      {/* Thread Content */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="divide-y divide-gray-200 dark:divide-gray-700">
+          {emails.map((email, index) => {
+            const isExpanded = expandedEmails.has(email.id);
+            const isLast = index === emails.length - 1;
 
-        {/* Subject */}
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
-          {currentEmail.subject}
-        </h3>
+            return (
+              <div key={email.id} className={isLast ? '' : 'bg-gray-50 dark:bg-gray-800/30'}>
+                {/* Email Header - Always Visible */}
+                <button
+                  onClick={() => toggleEmailExpanded(email.id)}
+                  className="w-full text-left p-4 hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-colors flex items-center gap-3"
+                >
+                  <ChevronRight
+                    size={18}
+                    className={`text-gray-400 flex-shrink-0 transition-transform ${
+                      isExpanded ? 'rotate-90' : ''
+                    }`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-medium text-gray-900 dark:text-white text-sm">
+                        {email.from_name || email.from_email}
+                      </span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        &lt;{email.from_email}&gt;
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                      <span>to {email.to_emails?.map((t: any) => t.email).join(', ') || 'me'}</span>
+                      <span>•</span>
+                      <span>{formatDate(email.created_at || email.sent_at || '')}</span>
+                    </div>
+                  </div>
+                </button>
 
-        {/* Email Body */}
-        <div className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words leading-relaxed mb-6">
-          {currentEmail.body || '(No content)'}
-        </div>
+                {/* Email Body - Expandable */}
+                {isExpanded && (
+                  <div className="px-6 pb-6 pt-0 border-t border-gray-200 dark:border-gray-700">
+                    {/* Full sender info when expanded */}
+                    <div className="mb-6 pt-4">
+                      <div className="flex items-start gap-4">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
+                          {(email.from_name || email.from_email).charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-gray-900 dark:text-white">
+                            {email.from_name || email.from_email}
+                          </p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            &lt;{email.from_email}&gt;
+                          </p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                            to {email.to_emails?.map((t: any) => t.email).join(', ') || 'me'}
+                            {email.cc_emails && email.cc_emails.length > 0 && (
+                              <span>, cc {email.cc_emails.map((cc: any) => cc.email).join(', ')}</span>
+                            )}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
+                            {new Date(email.created_at || email.sent_at || '').toLocaleString('en-IN', {
+                              timeZone: 'Asia/Kolkata',
+                              weekday: 'short',
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
 
-        {/* Action Buttons */}
-        <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-          <button
-            onClick={() => handleReply(currentEmail)}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-          >
-            <Reply size={16} />
-            Reply
-          </button>
-          <button
-            onClick={() => handleReplyAll(currentEmail)}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-          >
-            <ReplyAll size={16} />
-            Reply All
-          </button>
-          <button
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-          >
-            <Forward size={16} />
-            Forward
-          </button>
+                    {/* Email Body */}
+                    <div className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words leading-relaxed mb-6 text-sm">
+                      {email.body || '(No content)'}
+                    </div>
+
+                    {/* Action Buttons - Only on last email */}
+                    {isLast && (
+                      <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <button
+                          onClick={() => handleReply(email)}
+                          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                        >
+                          <Reply size={16} />
+                          Reply
+                        </button>
+                        <button
+                          onClick={() => handleReplyAll(email)}
+                          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                        >
+                          <ReplyAll size={16} />
+                          Reply All
+                        </button>
+                        <button
+                          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                        >
+                          <Forward size={16} />
+                          Forward
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

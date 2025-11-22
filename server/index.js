@@ -24,10 +24,15 @@ const toBoolInt = v => (v ? 1 : 0);
 app.post('/api/users', (req, res) => {
   const { id = crypto.randomUUID(), email, full_name, password_hash } = req.body;
   try {
+    // Get current time in IST (UTC+5:30)
+    const now = new Date();
+    const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+    const istTimestamp = istTime.toISOString().slice(0, 19).replace('T', ' ');
+    
     run(
       `INSERT OR REPLACE INTO users (id, email, full_name, password_hash, created_at)
-       VALUES (@id,@email,@full_name,@password_hash, datetime('now'))`,
-      { id, email, full_name, password_hash }
+       VALUES (@id,@email,@full_name,@password_hash, @created_at)`,
+      { id, email, full_name, password_hash, created_at: istTimestamp }
     );
     res.json({ success: true, id });
   } catch (err) {
@@ -58,10 +63,15 @@ app.get('/api/users/email/:email', (req, res) => {
 app.post('/api/folders', (req, res) => {
   const { id = crypto.randomUUID(), user_id, name } = req.body;
   try {
+    // Get current time in IST (UTC+5:30)
+    const now = new Date();
+    const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+    const istTimestamp = istTime.toISOString().slice(0, 19).replace('T', ' ');
+    
     run(
       `INSERT OR REPLACE INTO folders (id, user_id, name, created_at)
-       VALUES (@id,@user_id,@name, datetime('now'))`,
-      { id, user_id, name }
+       VALUES (@id,@user_id,@name, @created_at)`,
+      { id, user_id, name, created_at: istTimestamp }
     );
     res.json({ success: true, id });
   } catch (err) {
@@ -84,9 +94,14 @@ app.post('/api/emails', (req, res) => {
   const payload = req.body;
   const id = payload.id || crypto.randomUUID();
   try {
+    // Get current time in IST (UTC+5:30)
+    const now = new Date();
+    const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+    const istTimestamp = istTime.toISOString().slice(0, 19).replace('T', ' ');
+    
     run(
       `INSERT OR REPLACE INTO emails (id, user_id, folder_id, from_email, from_name, to_emails, cc_emails, bcc_emails, subject, body, is_read, is_starred, is_draft, has_attachments, created_at, sent_at, labels)
-       VALUES (@id,@user_id,@folder_id,@from_email,@from_name,@to_emails,@cc_emails,@bcc_emails,@subject,@body,@is_read,@is_starred,@is_draft,@has_attachments, datetime('now'), @sent_at, @labels)`,
+       VALUES (@id,@user_id,@folder_id,@from_email,@from_name,@to_emails,@cc_emails,@bcc_emails,@subject,@body,@is_read,@is_starred,@is_draft,@has_attachments, @created_at, @sent_at, @labels)`,
       {
         id,
         user_id: payload.user_id,
@@ -102,6 +117,7 @@ app.post('/api/emails', (req, res) => {
         is_starred: toBoolInt(payload.is_starred),
         is_draft: toBoolInt(payload.is_draft),
         has_attachments: toBoolInt(payload.has_attachments),
+        created_at: istTimestamp,
         sent_at: payload.sent_at || null,
         labels: JSON.stringify(payload.labels || [])
       }

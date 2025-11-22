@@ -12,7 +12,6 @@ import ComposeEmail from './ComposeEmail';
 import ThemeToggle from './ThemeToggle';
 import GamificationBadges from './GamificationBadges';
 import UserProfile from './UserProfile';
-import { removeDummyDataForUser } from '../lib/dummyData';
 import { animations } from '../utils/animations';
 
 const iconMap: Record<string, typeof Inbox> = {
@@ -94,12 +93,10 @@ export default function MailLayout() {
 
     const initializeUserData = async () => {
       try {
-        await removeDummyDataForUser(profile.id);
-      } catch (error) {
-        console.error('Error removing dummy data:', error);
-      } finally {
         loadFolders();
         loadEmails();
+      } catch (error) {
+        console.error('Error initializing user data:', error);
       }
     };
 
@@ -126,12 +123,35 @@ export default function MailLayout() {
       const { data, error } = await emailService.getFolders(profile.id);
 
       if (error) throw error;
-      setFolders(data || []);
+      
+      // If we got data from backend, use it
       if (data && data.length > 0) {
+        setFolders(data);
         setSelectedFolder(data[0]);
+      } else {
+        // Fallback to default folders if backend is not connected
+        const defaultFolders = [
+          { id: 'inbox', user_id: profile.id, name: 'Inbox', icon: 'inbox', color: '#3b82f6', created_at: new Date().toISOString() },
+          { id: 'sent', user_id: profile.id, name: 'Sent', icon: 'send', color: '#10b981', created_at: new Date().toISOString() },
+          { id: 'drafts', user_id: profile.id, name: 'Drafts', icon: 'file-edit', color: '#f59e0b', created_at: new Date().toISOString() },
+          { id: 'spam', user_id: profile.id, name: 'Spam', icon: 'archive', color: '#ef4444', created_at: new Date().toISOString() },
+          { id: 'trash', user_id: profile.id, name: 'Trash', icon: 'trash-2', color: '#6b7280', created_at: new Date().toISOString() }
+        ];
+        setFolders(defaultFolders);
+        setSelectedFolder(defaultFolders[0]);
       }
     } catch (error) {
       console.error('Error loading folders:', error);
+      // If there's an error (backend not connected), show default folders
+      const defaultFolders = [
+        { id: 'inbox', user_id: profile.id, name: 'Inbox', icon: 'inbox', color: '#3b82f6', created_at: new Date().toISOString() },
+        { id: 'sent', user_id: profile.id, name: 'Sent', icon: 'send', color: '#10b981', created_at: new Date().toISOString() },
+        { id: 'drafts', user_id: profile.id, name: 'Drafts', icon: 'file-edit', color: '#f59e0b', created_at: new Date().toISOString() },
+        { id: 'spam', user_id: profile.id, name: 'Spam', icon: 'archive', color: '#ef4444', created_at: new Date().toISOString() },
+        { id: 'trash', user_id: profile.id, name: 'Trash', icon: 'trash-2', color: '#6b7280', created_at: new Date().toISOString() }
+      ];
+      setFolders(defaultFolders);
+      setSelectedFolder(defaultFolders[0]);
     } finally {
       setLoading(false);
     }

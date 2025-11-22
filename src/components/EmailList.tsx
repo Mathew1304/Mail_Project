@@ -35,22 +35,54 @@ export default function EmailList({
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    // Get dates in IST timezone
+    const istFormatter = new Intl.DateTimeFormat('en-IN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      timeZone: 'Asia/Kolkata',
+    });
+    
+    const todayParts = istFormatter.formatToParts(now);
+    const dateParts = istFormatter.formatToParts(date);
+    
+    const todayStr = `${todayParts.find(p => p.type === 'year')?.value}-${todayParts.find(p => p.type === 'month')?.value}-${todayParts.find(p => p.type === 'day')?.value}`;
+    const dateStr = `${dateParts.find(p => p.type === 'year')?.value}-${dateParts.find(p => p.type === 'month')?.value}-${dateParts.find(p => p.type === 'day')?.value}`;
+    
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayFormatter = new Intl.DateTimeFormat('en-IN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      timeZone: 'Asia/Kolkata',
+    });
+    const yesterdayParts = yesterdayFormatter.formatToParts(yesterday);
+    const yesterdayStr = `${yesterdayParts.find(p => p.type === 'year')?.value}-${yesterdayParts.find(p => p.type === 'month')?.value}-${yesterdayParts.find(p => p.type === 'day')?.value}`;
 
-    if (diffHours < 24) {
-      return date.toLocaleTimeString('en-US', {
+    if (dateStr === todayStr) {
+      // Today: show time in 12-hour format with AM/PM
+      return date.toLocaleTimeString('en-IN', {
         hour: 'numeric',
         minute: '2-digit',
         hour12: true,
+        timeZone: 'Asia/Kolkata',
       });
-    } else if (diffDays < 7) {
-      return date.toLocaleDateString('en-US', { weekday: 'short' });
-    } else {
-      return date.toLocaleDateString('en-US', {
+    } else if (dateStr === yesterdayStr) {
+      return 'Yesterday';
+    } else if (dateParts.find(p => p.type === 'year')?.value === todayParts.find(p => p.type === 'year')?.value) {
+      return date.toLocaleDateString('en-IN', { 
         month: 'short',
         day: 'numeric',
+        timeZone: 'Asia/Kolkata',
+      });
+    } else {
+      return date.toLocaleDateString('en-IN', {
+        month: 'short',
+        day: 'numeric',
+        year: '2-digit',
+        timeZone: 'Asia/Kolkata',
       });
     }
   };
